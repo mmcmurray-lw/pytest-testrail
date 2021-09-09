@@ -32,6 +32,8 @@ CLOSE_TESTPLAN_URL = 'close_plan/{}'
 GET_TESTRUN_URL = 'get_run/{}'
 GET_TESTPLAN_URL = 'get_plan/{}'
 GET_TESTS_URL = 'get_tests/{}'
+GET_MILESTONES_URL = 'get_milestones/{}&is_completed=0'
+GET_TEST_RUNS_URL = 'get_runs/{}&milestone_id={}&is_completed=0'
 
 COMMENT_SIZE_LIMIT = 4000
 
@@ -338,12 +340,14 @@ class PyTestRailPlugin(object):
                     # Indent text to avoid string formatting by TestRail. Limit size of comment.
                     entry['comment'] += u"# Pytest result: #\n"
                     entry['comment'] += u'Log truncated\n...\n' if len(str(comment)) > COMMENT_SIZE_LIMIT else u''
-                    entry['comment'] += u"    " + converter(str(comment), "utf-8")[-COMMENT_SIZE_LIMIT:].replace('\n', '\n    ') # noqa
+                    entry['comment'] += u"    " + converter(str(comment), "utf-8")[-COMMENT_SIZE_LIMIT:].replace('\n',
+                                                                                                                 '\n    ')  # noqa
                 else:
                     # Indent text to avoid string formatting by TestRail. Limit size of comment.
                     entry['comment'] += u"# Pytest result: #\n"
                     entry['comment'] += u'Log truncated\n...\n' if len(str(comment)) > COMMENT_SIZE_LIMIT else u''
-                    entry['comment'] += u"    " + converter(str(comment), "utf-8")[-COMMENT_SIZE_LIMIT:].replace('\n', '\n    ') # noqa
+                    entry['comment'] += u"    " + converter(str(comment), "utf-8")[-COMMENT_SIZE_LIMIT:].replace('\n',
+                                                                                                                 '\n    ')  # noqa
             elif comment == '':
                 entry['comment'] = self.custom_comment
             duration = result.get('duration')
@@ -490,5 +494,36 @@ class PyTestRailPlugin(object):
         error = self.client.get_error(response)
         if error:
             print('[{}] Failed to get tests: "{}"'.format(TESTRAIL_PREFIX, error))
+            return None
+        return response
+
+    def get_active_milestones(self, project_id):
+        """
+        :return: the list of active milestones in the project.
+
+        """
+        response = self.client.send_get(
+            GET_MILESTONES_URL.format(project_id),
+            cert_check=self.cert_check
+        )
+        error = self.client.get_error(response)
+        if error:
+            print('[{}] Failed to get active milestones: "{}"'.format(TESTRAIL_PREFIX, error))
+            return None
+        return response
+
+    def get_active_test_runs_by_milestone(self, project_id, milestone_id):
+        """
+        :return: the list of test runs filtered by milestone.
+
+        """
+
+        response = self.client.send_get(
+            GET_TEST_RUNS_URL.format(project_id, milestone_id),
+            cert_check=self.cert_check
+        )
+        error = self.client.get_error(response)
+        if error:
+            print('[{}] Failed to get test runs for milestone {}: "{}"'.format(TESTRAIL_PREFIX, milestone_id, error))
             return None
         return response
