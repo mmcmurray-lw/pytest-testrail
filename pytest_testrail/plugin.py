@@ -27,6 +27,7 @@ TESTRAIL_PREFIX = 'testrail'
 TESTRAIL_DEFECTS_PREFIX = 'testrail_defects'
 ADD_RESULTS_URL = 'add_results_for_cases/{}'
 ADD_TESTRUN_URL = 'add_run/{}'
+UPDATE_TESTRUN_URL = 'update_run/{}'
 CLOSE_TESTRUN_URL = 'close_run/{}'
 CLOSE_TESTPLAN_URL = 'close_plan/{}'
 GET_TESTRUN_URL = 'get_run/{}'
@@ -145,11 +146,13 @@ def find_latest_id(prefix, testrail_items):
     prefixed_items = list(
         filter(lambda testrail_item: testrail_item['name'].startswith(prefix), testrail_items))
 
-    highest_v = 0
+    highest_version = 0
     testrail_id = None
     for testrail_item in prefixed_items:
-        if float(testrail_item['name'].split(prefix)[1]) > highest_v:
+        version = float(testrail_item['name'].split(prefix)[1])
+        if version > highest_version:
             testrail_id = testrail_item['id']
+            highest_version = version
 
     return testrail_id
 
@@ -157,7 +160,7 @@ def find_latest_id(prefix, testrail_items):
 class PyTestRailPlugin(object):
     def __init__(self, client, assign_user_id, project_id, suite_id, include_all, cert_check, tr_name,
                  tr_description='', run_id=0, plan_id=0, version='', close_on_complete=False,
-                 publish_blocked=True, skip_missing=False, milestone_id=None, milestone_prefix=None,
+                 publish_blocked=True, skip_missing=False, add_missing=True, milestone_id=None, milestone_prefix=None,
                  testrun_prefix=None, custom_comment=None):
         self.assign_user_id = assign_user_id
         self.cert_check = cert_check
@@ -173,7 +176,11 @@ class PyTestRailPlugin(object):
         self.version = version
         self.close_on_complete = close_on_complete
         self.publish_blocked = publish_blocked
-        self.skip_missing = skip_missing
+        self.add_missing = add_missing
+        if add_missing:
+            self.skip_missing = False
+        else:
+            self.skip_missing = skip_missing
         self.milestone_id = milestone_id
         self.milestone_prefix = milestone_prefix
         self.testrun_prefix = testrun_prefix
@@ -201,7 +208,7 @@ class PyTestRailPlugin(object):
             self.set_milestone_id(self.milestone_prefix)
 
         if self.testrun_prefix and self.milestone_id:
-            self.set_testrun_id(self.testrun_id)
+            self.set_testrun_id(self.testrun_prefix)
 
         if self.testplan_id and self.is_testplan_available():
             self.testrun_id = 0
@@ -215,6 +222,15 @@ class PyTestRailPlugin(object):
                     if not set(case_id).intersection(set(tests_list)):
                         mark = pytest.mark.skip('Test is not present in testrun.')
                         item.add_marker(mark)
+            if self.add_missing:
+                tests_list = [
+                    test.get('case_id') for test in self.get_tests(self.testrun_id)
+                ]
+                for item, case_id in items_with_tr_keys:
+                    if not set(case_id).intersection(set(tests_list)):
+                        tests_list.append(case_id[0])
+                self.update_test_run(self.testrun_id, tests_list)
+
         else:
             if self.testrun_name is None:
                 self.testrun_name = testrun_name()
@@ -436,6 +452,29 @@ class PyTestRailPlugin(object):
             print('[{}] New testrun created with name "{}" and ID={}'.format(TESTRAIL_PREFIX,
                                                                              testrun_name,
                                                                              self.testrun_id))
+
+    def update_test_run(self, testrun_id, tr_keys):
+        """
+        Update a testrun with case ids collected from markers.
+
+        :param testrun_id: id of the testrun to update.
+        :param tr_keys: collected testrail ids.
+        """
+        data = {
+            'case_ids': tr_keys
+        }
+
+        response = self.client.send_post(
+            UPDATE_TESTRUN_URL.format(testrun_id),
+            data,
+            cert_check=self.cert_check
+        )
+        error = self.client.get_error(response)
+        if error:
+            print('[{}] Failed to update testrun: "{}"'.format(TESTRAIL_PREFIX, error))
+        else:
+            self.testrun_id = response['id']
+            print('[{}] Testrun {} updated'.format(TESTRAIL_PREFIX, testrun_id))
 
     def close_test_run(self, testrun_id):
         """
