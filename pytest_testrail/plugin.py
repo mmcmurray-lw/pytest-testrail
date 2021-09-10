@@ -140,10 +140,25 @@ def get_testrail_keys(items):
     return testcaseids
 
 
+def find_latest_id(prefix, testrail_items):
+    prefix = f'{prefix} v'
+    prefixed_items = list(
+        filter(lambda testrail_item: testrail_item['name'].startswith(prefix), testrail_items))
+
+    highest_v = 0
+    testrail_id = None
+    for testrail_item in prefixed_items:
+        if float(testrail_item['name'].split(prefix)[1]) > highest_v:
+            testrail_id = testrail_item['id']
+
+    return testrail_id
+
+
 class PyTestRailPlugin(object):
     def __init__(self, client, assign_user_id, project_id, suite_id, include_all, cert_check, tr_name,
                  tr_description='', run_id=0, plan_id=0, version='', close_on_complete=False,
-                 publish_blocked=True, skip_missing=False, milestone_id=None, custom_comment=None):
+                 publish_blocked=True, skip_missing=False, milestone_id=None, milestone_prefix=None,
+                 testrun_prefix=None, custom_comment=None):
         self.assign_user_id = assign_user_id
         self.cert_check = cert_check
         self.client = client
@@ -160,6 +175,8 @@ class PyTestRailPlugin(object):
         self.publish_blocked = publish_blocked
         self.skip_missing = skip_missing
         self.milestone_id = milestone_id
+        self.milestone_prefix = milestone_prefix
+        self.testrun_prefix = testrun_prefix
         self.custom_comment = custom_comment
 
     # pytest hooks
@@ -179,6 +196,12 @@ class PyTestRailPlugin(object):
     def pytest_collection_modifyitems(self, session, config, items):
         items_with_tr_keys = get_testrail_keys(items)
         tr_keys = [case_id for item in items_with_tr_keys for case_id in item[1]]
+
+        if self.milestone_prefix:
+            self.set_milestone_id(self.milestone_prefix)
+
+        if self.testrun_prefix and self.milestone_id:
+            self.set_testrun_id(self.testrun_id)
 
         if self.testplan_id and self.is_testplan_available():
             self.testrun_id = 0
@@ -364,6 +387,24 @@ class PyTestRailPlugin(object):
         error = self.client.get_error(response)
         if error:
             print('[{}] Info: Testcases not published for following reason: "{}"'.format(TESTRAIL_PREFIX, error))
+
+    def set_milestone_id(self, milestone_prefix):
+        active_milestones = self.get_active_milestones(self.project_id)
+        milestone_id = find_latest_id(milestone_prefix, active_milestones)
+        if milestone_id:
+            self.milestone_id = milestone_id
+        else:
+            print(
+                '[{}] Error: Could not find milestone id to match prefix {}'.format(TESTRAIL_PREFIX, milestone_prefix))
+
+    def set_testrun_id(self, testrun_prefix):
+        active_testruns = self.get_active_test_runs_by_milestone(self.project_id, self.milestone_id)
+        testrun_id = find_latest_id(testrun_prefix, active_testruns)
+        if testrun_id:
+            self.testrun_id = testrun_id
+        else:
+            print(
+                '[{}] Error: Could not find testrun id to match prefix {}'.format(TESTRAIL_PREFIX, testrun_prefix))
 
     def create_test_run(self, assign_user_id, project_id, suite_id, include_all,
                         testrun_name, tr_keys, milestone_id, description=''):

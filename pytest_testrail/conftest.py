@@ -121,6 +121,20 @@ def pytest_addoption(parser):
         help='Custom comment, to be appended to default comment for test case \
               (config file: custom_comment in TESTCASE section)'
     )
+    group.addoption(
+        '--tr-milestone-prefix',
+        action='store',
+        default=None,
+        required=False,
+        help='Prefix of milestone to add test results to'
+    )
+    group.addoption(
+        '--tr-testrun-prefix',
+        action='store',
+        default=None,
+        required=False,
+        help='Prefix of testrun to add test results to'
+    )
 
 
 def pytest_configure(config):
@@ -151,6 +165,8 @@ def pytest_configure(config):
                 publish_blocked=config.getoption('--tr-dont-publish-blocked'),
                 skip_missing=config.getoption('--tr-skip-missing'),
                 milestone_id=config_manager.getoption('tr-milestone-id', 'milestone_id', 'TESTRUN'),
+                milestone_prefix=config_manager.getoption('tr-milestone-prefix', 'milestone_prefix', 'TESTRUN'),
+                testrun_prefix=config_manager.getoption('tr-testrun-prefix', 'testrun_prefix', 'TESTRUN'),
                 custom_comment=config_manager.getoption('tc-custom-comment', 'custom_comment', 'TESTCASE')
             ),
             # Name of plugin instance (allow to be used by other plugins)
